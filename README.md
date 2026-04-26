@@ -1,4 +1,4 @@
-# 🕸️ Cat's Cradle — Neon String System
+# 🕸️ Cat's Cradle - Neon String System
 
 An interactive real-time hand-tracking art experience built with **MediaPipe Hands** and **p5.js**.  
 Hold both hands in front of your webcam and watch glowing laser strings weave between your fingertips. Touch them together to trigger neon particle explosions.
@@ -7,13 +7,13 @@ Hold both hands in front of your webcam and watch glowing laser strings weave be
 
 ## ✨ Features
 
-- 🎥 **Live Webcam Feed** : Uses your browser's camera in real time (no data is sent to any server)
-- 🖐️ **Dual Hand Tracking** : Detects and tracks both hands simultaneously using MediaPipe Hands
-- 🌈 **Elastic Neon Strings** : Glowing laser-beam strings connect matching fingertips across both hands; color shifts from **cyan → magenta → yellow** as hands stretch apart
-- 💥 **Particle Explosions** : Touch any two matching fingertips together to trigger a burst of neon particles
-- 🫧 **Glowing Joints** : Every hand landmark is rendered as a glowing neon dot; fingertips are extra bright
-- 📺 **CRT Aesthetic** : Scanline overlay, vignette, and flicker animation for a retro-futuristic feel
-- 🌌 **Futuristic HUD** : Minimal status bar with live hand-tracking feedback
+- 🎥 **Live Webcam Feed** - Uses your browser's camera in real time (no data is sent to any server)
+- 🖐️ **Dual Hand Tracking** - Detects and tracks both hands simultaneously using MediaPipe Hands
+- 🌈 **Elastic Neon Strings** - Glowing laser-beam strings connect matching fingertips across both hands; color shifts from **cyan → magenta → yellow** as hands stretch apart
+- 💥 **Particle Explosions** - Touch any two matching fingertips together to trigger a burst of neon particles
+- 🫧 **Glowing Joints** - Every hand landmark is rendered as a glowing neon dot; fingertips are extra bright
+- 📺 **CRT Aesthetic** - Scanline overlay, vignette, and flicker animation for a retro-futuristic feel
+- 🌌 **Futuristic HUD** - Minimal status bar with live hand-tracking feedback
 
 ---
 
