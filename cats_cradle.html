@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAT'S CRADLE · NEON STRINGS</title>
+
+  <!-- MediaPipe Hands + Camera utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <!-- p5.js -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #010914;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Hidden video – used only as MediaPipe source */
+    #input_video {
+      position: fixed;
+      width: 1px; height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* p5 canvas sits on top */
+    canvas {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      z-index: 1;
+    }
+
+    /* CRT scanline + vignette overlay */
+    #crt {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      background:
+        /* scanlines */
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 3px,
+          rgba(0, 0, 0, 0.08) 3px,
+          rgba(0, 0, 0, 0.08) 4px
+        ),
+        /* vignette */
+        radial-gradient(
+          ellipse at center,
+          transparent 55%,
+          rgba(0, 0, 0, 0.55) 100%
+        );
+      animation: flicker 8s infinite;
+    }
+    @keyframes flicker {
+      0%, 97%, 100% { opacity: 1; }
+      98% { opacity: 0.93; }
+      99% { opacity: 0.97; }
+    }
+
+    /* HUD */
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 30;
+      padding: 18px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+
+    .hud-title {
+      font-size: 13px;
+      letter-spacing: 6px;
+      color: rgba(0, 255, 255, 0.7);
+      text-shadow: 0 0 12px cyan, 0 0 30px rgba(0,255,255,0.4);
+    }
+    .hud-sub {
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: rgba(0, 255, 255, 0.35);
+      margin-top: 4px;
+    }
+    .hud-corner {
+      text-align: right;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: rgba(255, 0, 255, 0.4);
+    }
+
+    #status-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 30;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      border-top: 1px solid rgba(0,255,255,0.07);
+    }
+    #status-msg {
+      font-size: 9px;
+      letter-spacing: 4px;
+      color: rgba(255, 255, 0, 0.55);
+      text-shadow: 0 0 8px rgba(255,255,0,0.4);
+    }
+    .hud-tip {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.15);
+    }
+  </style>
+</head>
+<body>
+  <video id="input_video" autoplay playsinline muted></video>
+
+  <!-- CRT overlay -->
+  <div id="crt"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div>
+      <div class="hud-title">CAT'S CRADLE</div>
+      <div class="hud-sub">NEON STRING SYSTEM v1.0</div>
+    </div>
+    <div class="hud-corner">
+      MEDIAPIPE HANDS<br/>
+      REAL-TIME TRACKING
+    </div>
+  </div>
+
+  <div id="status-bar">
+    <div id="status-msg">INITIALIZING TRACKING ARRAY…</div>
+    <div class="hud-tip">TOUCH FINGERTIPS TO IGNITE</div>
+  </div>
+
+  <script>
+  // ─────────────────────────────────────────────────────────
+  //  GLOBAL STATE
+  // ─────────────────────────────────────────────────────────
+  let handsData   = [];        // [{label, landmarks}]
+  let particles   = [];        // Particle[]
+  let touchedPairs = new Set();
+
+  // MediaPipe fingertip landmark indices
+  const TIPS  = [4, 8, 12, 16, 20];
+  // All hand connections for skeleton
+  const CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+  ];
+
+  // ─────────────────────────────────────────────────────────
+  //  PARTICLE CLASS
+  // ─────────────────────────────────────────────────────────
+  class Particle {
+    constructor(x, y, r, g, b) {
+      this.x = x; this.y = y;
+      const speed = 2 + Math.random() * 7;
+      const angle = Math.random() * Math.PI * 2;
+      this.vx = Math.cos(angle) * speed;
+      this.vy = Math.sin(angle) * speed;
+      this.r = r; this.g = g; this.b = b;
+      this.life   = 1.0;
+      this.decay  = 0.018 + Math.random() * 0.025;
+      this.radius = 1.5 + Math.random() * 4;
+    }
+    update() {
+      this.x  += this.vx;
+      this.y  += this.vy;
+      this.vx *= 0.94;
+      this.vy *= 0.94;
+      this.life -= this.decay;
+    }
+    dead() { return this.life <= 0; }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  p5.js SKETCH
+  // ─────────────────────────────────────────────────────────
+  const sketch = (p) => {
+
+    // Coordinate helpers (mirror x for front-facing cam)
+    const mx = (v) => (1 - v) * p.width;
+    const my = (v) => v * p.height;
+
+    // ── Glow helpers ──────────────────────────────────────
+    function setGlow(col, blur) {
+      p.drawingContext.shadowColor = col;
+      p.drawingContext.shadowBlur  = blur;
+    }
+    function clearGlow() {
+      p.drawingContext.shadowBlur = 0;
+    }
+
+    // ── Gradient string colour based on stretch ───────────
+    function stretchColor(t) {
+      t = Math.max(0, Math.min(1, t));
+      let r, g, b;
+      if (t < 0.5) {
+        const u = t * 2;          // cyan → magenta
+        r = Math.round(255 * u);
+        g = Math.round(255 * (1 - u));
+        b = 255;
+      } else {
+        const u = (t - 0.5) * 2; // magenta → yellow
+        r = 255;
+        g = Math.round(255 * u);
+        b = Math.round(255 * (1 - u));
+      }
+      return [r, g, b];
+    }
+
+    // ── Draw hand skeleton (silhouette lines) ─────────────
+    function drawSkeleton(lms, isLeft) {
+      const baseCol = isLeft
+        ? 'rgba(0,200,255,0.22)'
+        : 'rgba(255,0,220,0.22)';
+      clearGlow();
+      p.noFill();
+      p.stroke(baseCol);
+      p.strokeWeight(1);
+      CONNECTIONS.forEach(([a, b]) => {
+        if (!lms[a] || !lms[b]) return;
+        p.line(mx(lms[a].x), my(lms[a].y),
+               mx(lms[b].x), my(lms[b].y));
+      });
+    }
+
+    // ── Draw glowing joint dots ───────────────────────────
+    function drawJoints(lms, isLeft) {
+      p.noStroke();
+      lms.forEach((lm, i) => {
+        const isTip = TIPS.includes(i);
+        const radius = isTip ? 7 : 3.5;
+        const blur   = isTip ? 22 : 10;
+        const col    = isTip
+          ? (isLeft ? '#00ffff' : '#ff00ff')
+          : (isLeft ? 'rgba(0,180,255,0.85)' : 'rgba(200,0,255,0.85)');
+        setGlow(col, blur);
+        p.fill(col);
+        p.circle(mx(lm.x), my(lm.y), radius * 2);
+      });
+      clearGlow();
+    }
+
+    // ── Draw elastic laser string between two points ──────
+    function drawString(x1, y1, x2, y2, t) {
+      const [r, g, b] = stretchColor(t);
+      const weight = Math.max(0.4, 2.8 - t * 2.4);
+      const glow   = 8 + (1 - t) * 30;
+
+      p.noFill();
+      // Pass 1 – wide outer glow
+      setGlow(`rgb(${r},${g},${b})`, glow * 2.5);
+      p.stroke(r, g, b, 40);
+      p.strokeWeight(weight * 5);
+      p.line(x1, y1, x2, y2);
+
+      // Pass 2 – mid glow
+      setGlow(`rgb(${r},${g},${b})`, glow);
+      p.stroke(r, g, b, 120);
+      p.strokeWeight(weight * 2.2);
+      p.line(x1, y1, x2, y2);
+
+      // Pass 3 – core bright line
+      setGlow(`rgb(${r},${g},${b})`, 4);
+      p.stroke(r, g, b, 255);
+      p.strokeWeight(weight);
+      p.line(x1, y1, x2, y2);
+
+      clearGlow();
+    }
+
+    // ── Explode particles at touch point ─────────────────
+    function spawnExplosion(x, y) {
+      const palette = [
+        [0, 255, 255],   // cyan
+        [255, 0, 255],   // magenta
+        [255, 255, 0],   // yellow
+        [255, 255, 255]  // white
+      ];
+      for (let i = 0; i < 35; i++) {
+        const [r, g, b] = palette[Math.floor(Math.random() * palette.length)];
+        particles.push(new Particle(x, y, r, g, b));
+      }
+    }
+
+    // ── Render particles ──────────────────────────────────
+    function drawParticles() {
+      p.noStroke();
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const pt = particles[i];
+        pt.update();
+        if (pt.dead()) { particles.splice(i, 1); continue; }
+        const a = pt.life;
+        setGlow(`rgba(${pt.r},${pt.g},${pt.b},1)`, 14);
+        p.fill(pt.r, pt.g, pt.b, a * 255);
+        p.circle(pt.x, pt.y, pt.radius * pt.life * 2);
+      }
+      clearGlow();
+      // Safety cap
+      if (particles.length > 600) particles.splice(0, particles.length - 600);
+    }
+
+    // ─────────────────────────────────────────────────────
+    p.setup = () => {
+      const cnv = p.createCanvas(window.innerWidth, window.innerHeight);
+      cnv.style('position', 'fixed');
+      cnv.style('top',  '0');
+      cnv.style('left', '0');
+      cnv.style('z-index', '1');
+      p.pixelDensity(window.devicePixelRatio || 1);
+    };
+
+    p.windowResized = () => {
+      p.resizeCanvas(window.innerWidth, window.innerHeight);
+    };
+
+    p.draw = () => {
+      // Deep midnight blue background with translucent fade (motion blur feel)
+      p.background(1, 9, 20, 220);
+
+      const maxDiag = Math.hypot(p.width, p.height);
+
+      const leftHand  = handsData.find(h => h.label === 'Left');
+      const rightHand = handsData.find(h => h.label === 'Right');
+
+      // Draw silhouettes + joints for each hand
+      [leftHand, rightHand].forEach((hand, hi) => {
+        if (!hand) return;
+        drawSkeleton(hand.landmarks, hi === 0);
+        drawJoints(hand.landmarks,   hi === 0);
+      });
+
+      // Draw cat's cradle strings
+      if (leftHand && rightHand) {
+        const nowTouched = new Set();
+
+        TIPS.forEach((tipId, fi) => {
+          const lLm = leftHand.landmarks[tipId];
+          const rLm = rightHand.landmarks[tipId];
+          if (!lLm || !rLm) return;
+
+          const lx = mx(lLm.x), ly = my(lLm.y);
+          const rx = mx(rLm.x), ry = my(rLm.y);
+          const dist = Math.hypot(lx - rx, ly - ry);
+          const t    = Math.min(dist / (maxDiag * 0.65), 1);
+
+          drawString(lx, ly, rx, ry, t);
+
+          // Touch detection – threshold 28 px
+          const key = `${fi}`;
+          if (dist < 28) {
+            nowTouched.add(key);
+            if (!touchedPairs.has(key)) {
+              spawnExplosion((lx + rx) / 2, (ly + ry) / 2);
+            }
+          }
+        });
+
+        touchedPairs = nowTouched;
+      }
+
+      drawParticles();
+    };
+  };
+
+  new p5(sketch);
+
+  // ─────────────────────────────────────────────────────────
+  //  MEDIAPIPE HANDS SETUP
+  // ─────────────────────────────────────────────────────────
+  const videoEl  = document.getElementById('input_video');
+  const statusEl = document.getElementById('status-msg');
+
+  const hands = new Hands({
+    locateFile: file =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+    maxNumHands:             2,
+    modelComplexity:         1,
+    minDetectionConfidence:  0.7,
+    minTrackingConfidence:   0.6
+  });
+
+  hands.onResults(results => {
+    handsData = [];
+    if (results.multiHandLandmarks && results.multiHandedness) {
+      results.multiHandLandmarks.forEach((landmarks, i) => {
+        handsData.push({
+          landmarks,
+          label: results.multiHandedness[i].label
+        });
+      });
+    }
+
+    const n = handsData.length;
+    if      (n === 0) statusEl.textContent = 'NO HANDS DETECTED · RAISE YOUR HANDS';
+    else if (n === 1) statusEl.textContent = 'ONE HAND LOCKED · AWAITING SECOND';
+    else              statusEl.textContent = 'DUAL LOCK · WEAVE THE STRINGS · TOUCH FINGERTIPS';
+  });
+
+  // Start camera
+  const camera = new Camera(videoEl, {
+    onFrame: async () => { await hands.send({ image: videoEl }); },
+    width: 1280,
+    height: 720
+  });
+
+  camera.start()
+    .then(() => {
+      statusEl.textContent = 'CAMERA ONLINE · SHOW YOUR HANDS';
+    })
+    .catch(err => {
+      statusEl.textContent = 'CAMERA ERROR — ' + err.message.toUpperCase();
+      console.error('Camera error:', err);
+    });
+  </script>
+</body>
+</html>
