@@ -20,7 +20,7 @@ Hold both hands in front of your webcam and watch glowing laser strings weave be
 ## 🚀 How to Run
 
 ### Option 1 — Open Locally
-1. Download `cats_cradle.html`
+1. Download raw file `cats_cradle.html`
 2. Open it in **Google Chrome** or **Microsoft Edge**
 3. Allow camera access when prompted
 4. Show both hands to the camera and start weaving!
